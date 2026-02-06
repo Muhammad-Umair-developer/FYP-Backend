@@ -3,7 +3,7 @@ from app.models.attendance import AttendanceModel
 from datetime import date
 from typing import Union, Dict
 
-collection=get_collection("BSCS_7B")
+collection=get_collection("BSCS_8B")
 
 class AttendanceCRUD:
     def mark_attendance(self, attendance:Union[AttendanceModel, Dict]):
