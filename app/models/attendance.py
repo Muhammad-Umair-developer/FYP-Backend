@@ -4,7 +4,7 @@ from typing import Optional
 
 class AttendanceModel(BaseModel):
     student_id:str
-    student_name:Optional[str]=None
+    name:Optional[str]=None
     date:datetime
     status:str="Present"
     
