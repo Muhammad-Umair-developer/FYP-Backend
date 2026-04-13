@@ -56,7 +56,7 @@ def mark_attendance(image_path):
             student_name = None
             if best_student_id:
                 student = student_crud.get_student_by_id(best_student_id)
-                student_name = student["name"] if student else None
+                student_name = student["name"] if student else best_student_id
             
             # Check if already marked today
             already_marked = attendance_crud.check_attendance(best_student_id, today_datetime)
@@ -64,7 +64,7 @@ def mark_attendance(image_path):
             if not already_marked:
                 attendance_crud.mark_attendance({
                     "student_id": best_student_id,
-                    "student_name": student_name,
+                    "name": student_name,
                     "date": today_datetime,
                     "status": "Present"
                 })

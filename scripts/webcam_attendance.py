@@ -58,7 +58,7 @@ while True:
         student_name = None
         if best_student_id:
             student = student_crud.get_student_by_id(best_student_id)
-            student_name = student["name"] if student else None
+            student_name = student["name"] if student else best_student_id
         
         if best_score >= THRESHOLD:
             # Check if already marked today (set or DB)
@@ -69,7 +69,7 @@ while True:
                 # Mark attendance with proper datetime
                 attendance_crud.mark_attendance({
                     "student_id": best_student_id,
-                    "student_name": student_name,
+                    "name": student_name,
                     "date": today_datetime,
                     "status": "Present"
                 })

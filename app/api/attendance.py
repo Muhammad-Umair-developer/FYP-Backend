@@ -19,9 +19,7 @@ def mark_attendance(
     attendance: AttendanceModel,
     current_user: str = Depends(get_current_user)
 ):
-    today = datetime.utcnow().replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    today = datetime.utcnow()
 
     if crud.check_attendance(attendance.student_id, today):
         raise HTTPException(status_code=400, detail="Attendance already marked")

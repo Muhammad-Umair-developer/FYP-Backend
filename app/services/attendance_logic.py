@@ -36,11 +36,11 @@ def process_attendance(face_image, student_embeddings):
 
     # fetch student details
     student = student_crud.get_student_by_id(best_student_id)
-    student_name = student["name"] if student else None
+    student_name = student["name"] if student else best_student_id
 
     attendance_crud.mark_attendance({
         "student_id": best_student_id,
-        "student_name": student_name,
+        "name": student_name,
         "date": today,
         "status": "Present"
     })
@@ -88,11 +88,11 @@ def process_multiple_faces(face_image, student_embeddings):
 
         # recognized student
         student = student_crud.get_student_by_id(best_student_id)
-        student_name = student["name"] if student else None
+        student_name = student["name"] if student else best_student_id
 
         face_result.update({
             "student_id": best_student_id,
-            "student_name": student_name,
+            "name": student_name,
             "status": "recognized"
         })
 
