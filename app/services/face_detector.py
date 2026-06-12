@@ -8,8 +8,11 @@ detector=MTCNN()
 def detect_faces(image_input):
     """
     Detect faces from image path or numpy array
+    Returns detection information with bounding boxes
     Args:
         image_input: either a file path (str) or numpy array (already in RGB)
+    Returns:
+        List of detections with bbox and confidence
     """
     if isinstance(image_input, str):
         # It's a file path
@@ -23,13 +26,20 @@ def detect_faces(image_input):
     
     results=detector.detect_faces(img_rgb)
     
-    faces=[]
+    detections = []
     for r in results:
-        x,y,w,h=r['box']
+        x, y, w, h = r['box']
         # Ensure coordinates are positive
         x, y = max(0, x), max(0, y)
-        faces.append(img_rgb[y:y+h, x:x+w])
-    return faces
+        x2, y2 = x + w, y + h
+        
+        detections.append({
+            'bbox': [x, y, x2, y2],
+            'confidence': r.get('confidence', 0),
+            'face_region': img_rgb[y:y2, x:x2]
+        })
+    
+    return detections
 
 
     

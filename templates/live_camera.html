@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Camera Attendance</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .video-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        #videoCanvas {
+            width: 100%;
+            background: #000;
+            border-radius: 10px;
+            display: block;
+            max-height: 400px;
+        }
+        
+        #video {
+            display: none;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 120px;
+        }
+        
+        #startBtn {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        #startBtn:hover:not(:disabled) {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+        }
+        
+        #stopBtn {
+            background: #f44336;
+            color: white;
+        }
+        
+        #stopBtn:hover:not(:disabled) {
+            background: #da190b;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(244, 67, 54, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .results-section {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .results-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-box {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            color: #333;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .matches-list {
+            background: white;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .match-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+        
+        .match-item:last-child {
+            border-bottom: none;
+        }
+        
+        .match-name {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .match-confidence {
+            background: #667eea;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+        }
+        
+        .match-status {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+        }
+        
+        .status-matched {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .status-unknown {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .status-already {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .error-message {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #f44336;
+        }
+        
+        .success-message {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .info-section {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-top: 20px;
+        }
+        
+        .info-section strong {
+            display: block;
+            margin-bottom: 8px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-dot.active {
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.inactive {
+            background: #ccc;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📹 Live Camera Attendance</h1>
+        <p class="subtitle">Real-time face recognition and attendance marking</p>
+        
+        <div class="content">
+            <!-- Video Section -->
+            <div class="video-section">
+                <div class="status-indicator">
+                    <div class="status-dot inactive" id="statusDot"></div>
+                    <span id="statusText">Not connected</span>
+                </div>
+                
+                <canvas id="videoCanvas" width="640" height="480"></canvas>
+                <video id="video" width="640" height="480"></video>
+                
+                <div class="controls">
+                    <button id="startBtn" onclick="startCamera()">🎥 Start Camera</button>
+                    <button id="stopBtn" onclick="stopCamera()" disabled>⏹️ Stop</button>
+                </div>
+                
+                <div id="errorContainer"></div>
+            </div>
+            
+            <!-- Results Section -->
+            <div class="results-section">
+                <h3>📊 Results & Matches</h3>
+                
+                <div class="stats">
+                    <div class="stat-box">
+                        <div class="stat-label">Faces Detected</div>
+                        <div class="stat-value" id="facesDetected">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Marked Today</div>
+                        <div class="stat-value" id="markedToday">0</div>
+                    </div>
+                </div>
+                
+                <h3 style="margin-top: 15px; margin-bottom: 10px; color: #333; font-size: 14px;">Detected Matches</h3>
+                <div class="matches-list" id="matchesList">
+                    <div style="padding: 20px; text-align: center; color: #999;">
+                        No matches yet
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <strong>ℹ️ How it works:</strong>
+            1. Click "Start Camera" to begin streaming<br>
+            2. Allow camera access when prompted<br>
+            3. Faces are detected and matched in real-time<br>
+            4. Attendance is automatically marked for recognized students<br>
+            5. Click "Stop" to end the session
+        </div>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('videoCanvas');
+        const video = document.getElementById('video');
+        const ctx = canvas.getContext('2d');
+        let stream = null;
+        let ws = null;
+        let sessionId = null;
+        let isRunning = false;
+        let frameRate = 2; // Frames per second to send
+        let frameInterval = null;
+        let cameraStarted = false;
+        
+        async function startCamera() {
+            try {
+                console.log('🎥 Starting camera...');
+                showError(''); // Clear previous errors
+                
+                // Request camera access with specific constraints
+                const constraints = {
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    },
+                    audio: false
+                };
+                
+                console.log('📝 Requesting camera with constraints:', constraints);
+                
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                console.log('✓ Camera stream obtained:', stream.getVideoTracks());
+                
+                // Set video source and play
+                video.srcObject = stream;
+                
+                // Start playing
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.error('❌ Error playing video:', error);
+                        showError('Error starting video playback: ' + error.message);
+                    });
+                }
+                
+                // Wait for video to load metadata
+                return new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        reject(new Error('Video metadata timeout'));
+                    }, 5000);
+                    
+                    video.addEventListener('loadedmetadata', () => {
+                        clearTimeout(timeout);
+                        console.log('✓ Video metadata loaded');
+                        
+                        cameraStarted = true;
+                        
+                        // Start drawing video to canvas immediately using requestAnimationFrame
+                        console.log('🎬 Starting canvas rendering with requestAnimationFrame...');
+                        drawVideoFrame();
+                        
+                        // Generate session ID
+                        sessionId = generateUUID();
+                        console.log('📌 Session ID:', sessionId);
+                        
+                        // Connect to WebSocket
+                        connectWebSocket(sessionId);
+                        
+                        // Start capturing and sending frames
+                        startFrameCapture();
+                        
+                        // Update UI
+                        document.getElementById('startBtn').disabled = true;
+                        document.getElementById('stopBtn').disabled = false;
+                        updateStatus('connected');
+                        
+                        resolve();
+                    }, { once: true });
+                });
+                
+            } catch (error) {
+                console.error('❌ Camera Error:', error);
+                console.error('Error name:', error.name);
+                console.error('Error message:', error.message);
+                
+                let errorMsg = error.message;
+                
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    errorMsg = '🔒 CAMERA PERMISSION DENIED.\n\n📍 How to fix:\n1. Click the camera icon in address bar\n2. Click "Allow" to grant camera access\n3. Refresh the page\n4. Click "Start Camera" again';
+                } else if (error.name === 'NotFoundError') {
+                    errorMsg = '📷 No camera device found. Please connect a camera.';
+                } else if (error.name === 'NotReadableError') {
+                    errorMsg = '⚠️ Camera is being used by another application. Close it and try again.';
+                } else if (error.name === 'AbortError') {
+                    errorMsg = '❌ Camera request was aborted.';
+                } else if (error.name === 'TypeError') {
+                    errorMsg = '⚠️ getUserMedia is not supported in this browser. Use Chrome, Edge, or Firefox.';
+                }
+                
+                showError('Camera Error: ' + errorMsg);
+                updateStatus('error');
+            }
+        }
+        
+        function drawVideoFrame() {
+            if (!cameraStarted || !video.srcObject) {
+                console.warn('⚠️ Camera not started or no stream');
+                return;
+            }
+            
+            try {
+                // Check if video is playing
+                if (video.paused) {
+                    console.warn('⚠️ Video is paused, attempting to play...');
+                    video.play();
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#FFFF00';
+                    ctx.font = 'bold 18px Arial';
+                    ctx.fillText('Resuming video...', 20, canvas.height / 2);
+                } else if (video.readyState === HTMLMediaElement.HAVE_ENOUGH_DATA) {
+                    // Draw video frame
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                } else {
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.font = '16px Arial';
+                    ctx.fillText('Loading video... (' + video.readyState + ')', 20, canvas.height / 2);
+                }
+            } catch (error) {
+                console.error('❌ Error drawing frame:', error);
+                ctx.fillStyle = '#330000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = '16px Arial';
+                ctx.fillText('Error: ' + error.message, 20, canvas.height / 2);
+            }
+            
+            // Continue drawing with requestAnimationFrame (smoother than setInterval)
+            requestAnimationFrame(drawVideoFrame);
+        }
+        
+        function connectWebSocket(sessionId) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/camera/${sessionId}`;
+            
+            console.log('🔗 Connecting to WebSocket:', wsUrl);
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('✓ WebSocket connected and ready');
+                showSuccess('✓ Connected to attendance system');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('📨 Received from server:', data);
+                    
+                    if (data.type === 'match_result') {
+                        updateResults(data);
+                    } else if (data.type === 'error') {
+                        console.error('⚠️ Server error:', data.message);
+                        showError('Server Error: ' + data.message);
+                    }
+                } catch (error) {
+                    console.error('❌ Error parsing WebSocket message:', error);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('❌ WebSocket error:', error);
+                showError('❌ WebSocket Error: Connection failed.\n\nMake sure the FastAPI server is running on http://localhost:8000');
+                updateStatus('error');
+            };
+            
+            ws.onclose = () => {
+                console.log('⚠️ WebSocket disconnected');
+                if (isRunning) {
+                    updateStatus('disconnected');
+                }
+            };
+        }
+        
+        function startFrameCapture() {
+            console.log('📸 Starting frame capture at ' + frameRate + ' FPS');
+            
+            frameInterval = setInterval(() => {
+                if (!isRunning || !ws || ws.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+                
+                try {
+                    // Draw video to canvas and send
+                    if (video.readyState === HTMLMediaElement.HAVE_ENOUGH_DATA) {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        
+                        // Convert to JPEG and send
+                        const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                        const base64 = imageData.split(',')[1];
+                        
+                        // Send to WebSocket
+                        ws.send(JSON.stringify({
+                            type: 'frame',
+                            data: base64,
+                            timestamp: new Date().toISOString()
+                        }));
+                    }
+                } catch (error) {
+                    console.error('❌ Error capturing/sending frame:', error);
+                }
+            }, 1000 / frameRate);
+            
+            isRunning = true;
+            console.log('✓ Frame capture started');
+        }
+        
+        function stopCamera() {
+            console.log('⏹️ Stopping camera...');
+            isRunning = false;
+            cameraStarted = false;
+            
+            if (frameInterval) {
+                clearInterval(frameInterval);
+                console.log('✓ Frame interval cleared');
+            }
+            
+            if (stream) {
+                stream.getTracks().forEach(track => {
+                    console.log('⏹️ Stopping track:', track.kind);
+                    track.stop();
+                });
+                console.log('✓ All tracks stopped');
+            }
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                try {
+                    ws.send(JSON.stringify({ type: 'end' }));
+                    console.log('✓ End message sent to server');
+                } catch (error) {
+                    console.warn('⚠️ Error sending end message:', error);
+                }
+                ws.close();
+                console.log('✓ WebSocket closed');
+            }
+            
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '16px Arial';
+            ctx.fillText('Camera stopped', 20, canvas.height / 2);
+            
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            updateStatus('stopped');
+            
+            clearResults();
+            console.log('✓ Camera fully stopped');
+        }
+        
+        function updateResults(data) {
+            document.getElementById('facesDetected').textContent = data.faces_detected || 0;
+            document.getElementById('markedToday').textContent = data.marked_today || 0;
+            
+            const matchesList = document.getElementById('matchesList');
+            
+            if (!data.matches || data.matches.length === 0) {
+                matchesList.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">No faces detected</div>';
+                return;
+            }
+            
+            let html = '';
+            data.matches.forEach(match => {
+                let statusClass = 'status-unknown';
+                let statusText = match.status;
+                
+                if (match.status === 'newly_marked') {
+                    statusClass = 'status-matched';
+                    statusText = '✓ Marked';
+                } else if (match.status === 'already_marked') {
+                    statusClass = 'status-already';
+                    statusText = 'Already Marked';
+                } else if (match.status === 'unknown') {
+                    statusClass = 'status-unknown';
+                    statusText = 'Unknown';
+                }
+                
+                html += `
+                    <div class="match-item">
+                        <div style="flex: 1;">
+                            <div class="match-name">${match.student_id || 'Unknown'}</div>
+                            <div style="color: #999; font-size: 12px; margin-top: 3px;">${match.name || 'N/A'}</div>
+                        </div>
+                        <div class="match-confidence">${(match.confidence * 100).toFixed(1)}%</div>
+                        <div class="match-status ${statusClass}">${statusText}</div>
+                    </div>
+                `;
+            });
+            
+            matchesList.innerHTML = html;
+        }
+        
+        function clearResults() {
+            document.getElementById('facesDetected').textContent = '0';
+            document.getElementById('markedToday').textContent = '0';
+            document.getElementById('matchesList').innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">Camera stopped</div>';
+        }
+        
+        function updateStatus(status) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            dot.className = 'status-dot';
+            
+            switch(status) {
+                case 'connected':
+                    dot.classList.add('active');
+                    text.textContent = 'Connected & Streaming ✓';
+                    break;
+                case 'disconnected':
+                    dot.classList.add('inactive');
+                    text.textContent = 'Disconnected ✗';
+                    break;
+                case 'error':
+                    dot.style.background = '#f44336';
+                    text.textContent = 'Connection Error ⚠️';
+                    break;
+                case 'stopped':
+                    dot.classList.add('inactive');
+                    text.textContent = 'Stopped ⏹️';
+                    break;
+            }
+        }
+        
+        function showError(message) {
+            if (!message) {
+                const container = document.getElementById('errorContainer');
+                container.innerHTML = '';
+                return;
+            }
+            const container = document.getElementById('errorContainer');
+            container.innerHTML = `<div class="error-message"><strong>❌ Error:</strong><br>${message.replace(/\n/g, '<br>')}</div>`;
+            // Don't auto-clear error messages, let user dismiss them
+        }
+        
+        function showSuccess(message) {
+            const container = document.getElementById('errorContainer');
+            container.innerHTML = `<div class="success-message">${message}</div>`;
+            setTimeout(() => {
+                if (container.innerHTML && container.innerHTML.includes(message)) {
+                    container.innerHTML = '';
+                }
+            }, 3000);
+        }
+        
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (isRunning || cameraStarted) {
+                stopCamera();
+            }
+        });
+        
+        // Log on page load
+        console.log('═══════════════════════════════════════════');
+        console.log('🎥 Live Camera Attendance System');
+        console.log('═══════════════════════════════════════════');
+        console.log('📍 WebSocket will connect to:', window.location.protocol === 'https:' ? 'wss:' : 'ws:', '//', window.location.host, '/ws/camera/{sessionId}');
+        console.log('🌐 Current location:', window.location.href);
+        console.log('✓ Page loaded and ready');
+        console.log('═══════════════════════════════════════════');
+    </script>
+</body>
+</html>

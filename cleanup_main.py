@@ -1,18 +1,23 @@
-"""
+#!/usr/bin/env python
+"""Clean up main.py file"""
+
+clean_content = '''"""
 FastAPI main application - Production-ready Face Recognition Attendance System
 All endpoints centralized and organized under /api/v1/
 """
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZIPMiddleware
 import logging
 from datetime import datetime
 import json
 
 # Import routers
 from app.api import auth
-from app.api.students import router as students_router
-from app.api.attendance import router as attendance_router
+from app.api.students_v2 import router as students_router
+from app.api.attendance_v2 import router as attendance_router
+from app.api.embeddings import router as embeddings_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -45,13 +50,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# GZIP compression
+app.add_middleware(GZIPMiddleware, minimum_size=1000)
+
 
 # ==================== ROUTERS ====================
 
-# Include API routers with clean prefixes
-app.include_router(auth.router, prefix="/auth", tags=["👨‍🏫 Authorization"])
-app.include_router(students_router, prefix="/students", tags=["👨‍🎓 Students"])
-app.include_router(attendance_router, prefix="/attendance", tags=["📋 Attendance"])
+# Include API routers
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(students_router, tags=["Students (v2)"])
+app.include_router(attendance_router, tags=["Attendance (v2)"])
+app.include_router(embeddings_router, tags=["Embeddings Management"])
 
 
 # ==================== HEALTH CHECK ====================
@@ -118,7 +127,7 @@ async def websocket_camera(websocket: WebSocket, session_id: str):
         from app.services.face_embedder import get_all_embeddings
         from app.services.face_matcher import cosine_similarity
         from app.crud.student_crud import StudentCRUD
-        from app.crud.attendance_crud import AttendanceCRUD
+        from app.crud.attendance_crud_v2 import AttendanceCRUD
         from app.core.config import EMBEDDINGS_DIR
         import os
         
@@ -238,17 +247,7 @@ def root():
         "message": "Face Recognition Attendance System API v2.0",
         "documentation": "/api/docs",
         "api_version": "2.0.0",
-        "status": "running",
-        "live_camera": "/camera",
-        "endpoints": {
-            "health": "/health",
-            "info": "/api/info",
-            "auth": "/api/v1/auth",
-            "students": "/api/v1/students",
-            "attendance": "/api/v1/attendance",
-            "embeddings": "/api/v1/embeddings",
-            "websocket": "/ws/camera/{session_id}"
-        }
+        "status": "running"
     }
 
 
@@ -266,18 +265,6 @@ def api_root():
         "base_path": "/api/v1"
     }
 
-@app.get("/camera", response_class=HTMLResponse, tags=["UI"])
-def camera_interface():
-    """Live camera attendance interface"""
-    try:
-        import os
-        html_path = os.path.join("templates", "live_camera.html")
-        if os.path.exists(html_path):
-            with open(html_path, "r", encoding="utf-8") as f:
-                return f.read()
-        return "<h1>Camera interface not found</h1>"
-    except Exception as e:
-        return f"<h1>Error loading camera interface</h1><p>{str(e)}</p>"
 
 # ==================== ERROR HANDLERS ====================
 
@@ -307,3 +294,11 @@ if __name__ == "__main__":
         reload=True,
         log_level="info"
     )
+'''
+
+try:
+    with open('f:/FYP-120/app/main.py', 'w') as f:
+        f.write(clean_content)
+    print("✓ main.py cleaned successfully")
+except Exception as e:
+    print(f"✗ Error: {e}")

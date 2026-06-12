@@ -5,14 +5,15 @@ All endpoints centralized and organized under /api/v1/
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 import logging
 from datetime import datetime
 import json
 
 # Import routers
 from app.api import auth
-from app.api.students import router as students_router
-from app.api.attendance import router as attendance_router
+from app.api.students_v2 import router as students_router
+from app.api.attendance_v2 import router as attendance_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -45,13 +46,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# GZIP compression
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 
 # ==================== ROUTERS ====================
 
-# Include API routers with clean prefixes
-app.include_router(auth.router, prefix="/auth", tags=["👨‍🏫 Authorization"])
-app.include_router(students_router, prefix="/students", tags=["👨‍🎓 Students"])
-app.include_router(attendance_router, prefix="/attendance", tags=["📋 Attendance"])
+# Include API routers
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(students_router, tags=["Students (v2)"])
+app.include_router(attendance_router, tags=["Attendance (v2)"])
 
 
 # ==================== HEALTH CHECK ====================
@@ -77,8 +81,7 @@ def api_info():
         "endpoints": {
             "authentication": "/api/v1/auth",
             "students": "/api/v1/students",
-            "attendance": "/api/v1/attendance",
-            "embeddings": "/api/v1/embeddings"
+            "attendance": "/api/v1/attendance"
         }
     }
 
@@ -108,17 +111,32 @@ manager = ConnectionManager()
 
 @app.websocket("/ws/camera/{session_id}")
 async def websocket_camera(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for live camera attendance"""
+    """
+    WebSocket endpoint for live camera attendance
+    
+    Client should send:
+    {
+        "type": "frame",
+        "data": base64_encoded_image
+    }
+    
+    Server responds with:
+    {
+        "type": "match_result",
+        "matches": [...],
+        "marked": count
+    }
+    """
     await manager.connect(websocket, session_id)
     
     try:
         import cv2
         import numpy as np
         import base64
-        from app.services.face_embedder import get_all_embeddings
+        from app.services.face_embedder import get_embedding, get_all_embeddings
         from app.services.face_matcher import cosine_similarity
         from app.crud.student_crud import StudentCRUD
-        from app.crud.attendance_crud import AttendanceCRUD
+        from app.crud.attendance_crud_v2 import AttendanceCRUD
         from app.core.config import EMBEDDINGS_DIR
         import os
         
@@ -142,6 +160,7 @@ async def websocket_camera(websocket: WebSocket, session_id: str):
             
             if data.get("type") == "frame":
                 try:
+                    # Decode base64 image
                     img_data = base64.b64decode(data["data"])
                     img = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
                     
@@ -233,51 +252,35 @@ async def websocket_camera(websocket: WebSocket, session_id: str):
 
 @app.get("/", tags=["Root"])
 def root():
-    """API root"""
+    """API root - redirects to documentation"""
     return {
-        "message": "Face Recognition Attendance System API v2.0",
+        "message": "Face Recognition Attendance System API",
         "documentation": "/api/docs",
         "api_version": "2.0.0",
-        "status": "running",
-        "live_camera": "/camera",
         "endpoints": {
             "health": "/health",
             "info": "/api/info",
             "auth": "/api/v1/auth",
             "students": "/api/v1/students",
             "attendance": "/api/v1/attendance",
-            "embeddings": "/api/v1/embeddings",
             "websocket": "/ws/camera/{session_id}"
         }
     }
 
 
-@app.get("/test", tags=["Test"])
-def test_endpoint():
-    """Test endpoint"""
-    return {"status": "ok", "message": "Server is running"}
-
-
 @app.get("/api", tags=["Root"])
 def api_root():
-    """API root"""
+    """API root endpoint"""
     return {
         "version": "2.0.0",
-        "base_path": "/api/v1"
+        "base_path": "/api/v1",
+        "modules": {
+            "auth": "Authentication & JWT",
+            "students": "Student management (CRUD)",
+            "attendance": "Attendance tracking & reporting"
+        }
     }
 
-@app.get("/camera", response_class=HTMLResponse, tags=["UI"])
-def camera_interface():
-    """Live camera attendance interface"""
-    try:
-        import os
-        html_path = os.path.join("templates", "live_camera.html")
-        if os.path.exists(html_path):
-            with open(html_path, "r", encoding="utf-8") as f:
-                return f.read()
-        return "<h1>Camera interface not found</h1>"
-    except Exception as e:
-        return f"<h1>Error loading camera interface</h1><p>{str(e)}</p>"
 
 # ==================== ERROR HANDLERS ====================
 
@@ -285,7 +288,7 @@ def camera_interface():
 async def not_found_handler(request, exc):
     return JSONResponse(
         status_code=404,
-        content={"detail": "Endpoint not found"}
+        content={"detail": "Endpoint not found", "path": request.url.path}
     )
 
 

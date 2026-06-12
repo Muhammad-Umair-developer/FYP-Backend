@@ -1,9 +1,34 @@
+# Web Framework
 fastapi
-uvicorn
+uvicorn[standard]
+python-multipart
+
+# Data Validation & Serialization
 pydantic
-python-dotenv
+pydantic-settings
+
+# Database
 pymongo
-mtcnn
+dnspython
+
+# Face Recognition & Computer Vision
+insightface
 opencv-python
-insightface==0.7.3
 numpy
+mtcnn
+onnxruntime
+
+# Authentication & Security
+python-jose[cryptography]
+cryptography
+passlib[bcrypt]
+
+# Environment & Config
+python-dotenv
+
+# Development Tools (optional)
+pytest
+pytest-asyncio
+
+# Deployment
+gunicorn
