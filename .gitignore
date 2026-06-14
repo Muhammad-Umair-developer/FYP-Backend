@@ -1,0 +1,7 @@
+# For Node.js
+node_modules/
+
+# For Python
+.venv/
+venv/
+__pycache__/
