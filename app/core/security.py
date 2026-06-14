@@ -1,5 +1,5 @@
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 
@@ -8,7 +8,8 @@ SECRET_KEY = "CHANGE_THIS_SECRET_KEY"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-security = HTTPBearer()
+# OAuth2 Password Bearer flow pointing to /auth/login
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 # ================= TOKEN CREATION =================
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
@@ -21,10 +22,8 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 
 # ================= TOKEN VERIFICATION =================
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    token: str = Depends(oauth2_scheme),
 ):
-    token = credentials.credentials
-
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")

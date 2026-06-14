@@ -96,7 +96,7 @@ def process_multiple_faces(face_image, student_embeddings):
             "status": "recognized"
         })
 
-        already_marked = attendance_crud.check_attendance(best_student_id, today)
+        already_marked = attendance_crud.check_attendance(best_student_id, today) is not None
         face_result["already_marked"] = already_marked
 
         if already_marked:

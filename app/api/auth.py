@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException
-from app.models.user import UserModel
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import OAuth2PasswordRequestForm
 from app.core.security import create_access_token
 
 router = APIRouter()
@@ -10,9 +10,9 @@ ADMIN_PASSWORD = "admin123"
 
 
 @router.post("/login")
-def login(user: UserModel):
-    if user.email == ADMIN_EMAIL and user.password == ADMIN_PASSWORD:
-        token = create_access_token({"sub": user.email})
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    if form_data.username == ADMIN_EMAIL and form_data.password == ADMIN_PASSWORD:
+        token = create_access_token({"sub": form_data.username})
         return {
             "access_token": token,
             "token_type": "bearer"
