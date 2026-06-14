@@ -12,7 +12,8 @@ crud = StudentCRUD()
 
 @router.post("/register")
 def register_student(
-    student: StudentModel
+    student: StudentModel,
+    current_user: str = Depends(get_current_user)
 ):
     """Register a new student"""
     if crud.get_student_by_id(student.student_id):
@@ -61,7 +62,8 @@ def get_student(
 @router.put("/{student_id}")
 def update_student(
     student_id: str,
-    update_data: dict
+    update_data: dict,
+    current_user: str = Depends(get_current_user)
 ):
     """Update student information"""
     student = crud.get_student_by_id(student_id)
@@ -79,7 +81,8 @@ def update_student(
 
 @router.delete("/{student_id}")
 def delete_student(
-    student_id: str
+    student_id: str,
+    current_user: str = Depends(get_current_user)
 ):
     """Delete a student"""
     student = crud.get_student_by_id(student_id)
