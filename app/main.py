@@ -2,8 +2,9 @@
 FastAPI main application - Production-ready Face Recognition Attendance System
 All endpoints centralized and organized under /api/v1/
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
+from app.core.security import get_current_user
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -287,6 +288,34 @@ def api_root():
         "version": "2.0.0",
         "base_path": "/api/v1"
     }
+
+@app.delete("/classes/{class_name}", tags=["Classes"])
+def delete_class(class_name: str, current_user: str = Depends(get_current_user)):
+    """Permanently delete dynamic MongoDB collections for class and student registry"""
+    from fastapi import HTTPException
+    from app.core.database import db
+    from app.crud.attendance_crud import resolve_attendance_collection
+    
+    resolved_attendance = resolve_attendance_collection(class_name)
+    
+    try:
+        # Drop the raw class attendance collection
+        db.drop_collection(resolved_attendance)
+        
+        # Drop the student metadata registry collection (and its variations)
+        db.drop_collection(f"students-{class_name}")
+        
+        alt_student_col = f"students-{class_name.replace('-', '_')}"
+        if alt_student_col != f"students-{class_name}":
+            db.drop_collection(alt_student_col)
+            
+        alt_student_col2 = f"students-{class_name.replace('_', '-')}"
+        if alt_student_col2 != f"students-{class_name}":
+            db.drop_collection(alt_student_col2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete class: {str(e)}")
+        
+    return {"message": f"Class '{class_name}' deleted successfully"}
 
 @app.get("/camera", response_class=HTMLResponse, tags=["UI"])
 def camera_interface(class_tag: Optional[str] = Query(None), class_name: Optional[str] = Query(None)):
