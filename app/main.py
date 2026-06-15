@@ -299,10 +299,15 @@ def camera_interface(class_tag: Optional[str] = Query(None), class_name: Optiona
             with open(html_path, "r", encoding="utf-8") as f:
                 html_content = f.read()
             
-            # Fetch dynamic class names from MongoDB collections starting with 'students-'
+            # Fetch dynamic class names from MongoDB collections
             from app.core.database import db
             collections = db.list_collection_names()
-            classes = [col.replace("students-", "") for col in collections if col.startswith("students-")]
+            classes = []
+            for col in collections:
+                if col.startswith("students-"):
+                    classes.append(col.replace("students-", ""))
+                elif col not in ["users", "admin", "system.indexes", "students", "attendance"]:
+                    classes.append(col.replace("_", "-"))
             classes = sorted(list(set(classes)))
             
             # Inject classes list into templates before rendering
