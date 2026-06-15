@@ -290,12 +290,98 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
+        
+        /* Premium Class Selection Overlay styles */
+        .class-selection-section {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 25px;
+            border: 1px solid #eaeaea;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+        .class-selection-section h2 {
+            font-size: 22px;
+            color: #333;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        .class-selection-section p {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 25px;
+        }
+        .class-select-input {
+            width: 100%;
+            max-width: 400px;
+            padding: 12px 18px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 15px;
+            background-color: #f8fafc;
+            color: #334155;
+            outline: none;
+            transition: all 0.3s;
+            cursor: pointer;
+            margin: 0 auto 20px auto;
+            display: block;
+        }
+        .class-select-input:focus {
+            border-color: #667eea;
+            background-color: #ffffff;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+        }
+        .launch-btn {
+            width: 100%;
+            max-width: 400px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            margin: 0 auto;
+            display: block;
+        }
+        .launch-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+        .launch-btn:active {
+            transform: translateY(0);
+        }
+        .change-class-btn {
+            background: #e2e8f0;
+            color: #475569;
+        }
+        .change-class-btn:hover:not(:disabled) {
+            background: #cbd5e1;
+            color: #1e293b;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📹 Live Camera Attendance</h1>
         <p class="subtitle">Real-time face recognition and attendance marking</p>
+        <!-- Class Selection Landing State -->
+        <div id="classSelectionSection" class="class-selection-section">
+            <h2>Select Class Collection</h2>
+            <p>Select a target class to isolate face recognition and dynamically mark attendance logs.</p>
+            <select id="classSelect" class="class-select-input">
+                <!-- Dynamically populated from window.AVAILABLE_CLASSES -->
+            </select>
+            <button id="launchBtn" class="launch-btn" onclick="launchCameraWithClass()">
+                🚀 Launch Camera & Start Attendance
+            </button>
+        </div>
         
         <div class="content">
             <!-- Video Section -->
@@ -311,6 +397,7 @@
                 <div class="controls">
                     <button id="startBtn" onclick="startCamera()">🎥 Start Camera</button>
                     <button id="stopBtn" onclick="stopCamera()" disabled>⏹️ Stop</button>
+                    <button id="changeClassBtn" class="change-class-btn" onclick="changeClass()">🔄 Change Class</button>
                 </div>
                 
                 <div id="errorContainer"></div>
@@ -351,6 +438,8 @@
     </div>
     
     <script>
+        window.AVAILABLE_CLASSES = [];
+
         const canvas = document.getElementById('videoCanvas');
         const video = document.getElementById('video');
         const ctx = canvas.getContext('2d');
@@ -361,6 +450,74 @@
         let frameRate = 2; // Frames per second to send
         let frameInterval = null;
         let cameraStarted = false;
+
+        // Populate and initialize available classes
+        document.addEventListener('DOMContentLoaded', () => {
+            const classSelect = document.getElementById('classSelect');
+            const classSelectionSection = document.getElementById('classSelectionSection');
+            const contentSection = document.querySelector('.content');
+            
+            // Populate classes dropdown
+            if (window.AVAILABLE_CLASSES && window.AVAILABLE_CLASSES.length > 0) {
+                classSelect.innerHTML = window.AVAILABLE_CLASSES.map(cls => `<option value="${cls}">${cls}</option>`).join('');
+            } else {
+                classSelect.innerHTML = '<option value="">No classes available</option>';
+            }
+            
+            // Check if class is already specified in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const classTag = urlParams.get('class_tag') || urlParams.get('class_name');
+            
+            if (classTag) {
+                // If query param exists, pre-select it and show the camera directly
+                if (window.AVAILABLE_CLASSES.includes(classTag)) {
+                    classSelect.value = classTag;
+                }
+                classSelectionSection.style.display = 'none';
+                contentSection.style.display = 'grid';
+            } else {
+                // Otherwise, show class selection and hide video section initially
+                classSelectionSection.style.display = 'block';
+                contentSection.style.display = 'none';
+            }
+        });
+        
+        function launchCameraWithClass() {
+            const classSelect = document.getElementById('classSelect');
+            const chosenClass = classSelect.value;
+            if (!chosenClass) {
+                alert('Please select a valid class collection first.');
+                return;
+            }
+            
+            // Update URL search parameters without page reload
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('class_tag', chosenClass);
+            const newUrl = window.location.pathname + '?' + urlParams.toString();
+            window.history.pushState({ path: newUrl }, '', newUrl);
+            
+            // Show camera panel, hide selection panel
+            document.getElementById('classSelectionSection').style.display = 'none';
+            document.querySelector('.content').style.display = 'grid';
+            
+            // Automatically launch camera
+            startCamera();
+        }
+        
+        function changeClass() {
+            // Stop camera if running
+            if (isRunning || cameraStarted) {
+                stopCamera();
+            }
+            
+            // Remove class query parameters from URL
+            const newUrl = window.location.pathname;
+            window.history.pushState({ path: newUrl }, '', newUrl);
+            
+            // Reset and show selector, hide camera panel
+            document.getElementById('classSelectionSection').style.display = 'block';
+            document.querySelector('.content').style.display = 'none';
+        }
         
         async function startCamera() {
             try {
@@ -494,7 +651,12 @@
         
         function connectWebSocket(sessionId) {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws/camera/${sessionId}`;
+            const urlParams = new URLSearchParams(window.location.search);
+            const classTag = urlParams.get('class_tag') || urlParams.get('class_name');
+            let wsUrl = `${protocol}//${window.location.host}/ws/camera/${sessionId}`;
+            if (classTag) {
+                wsUrl += `?class_tag=${encodeURIComponent(classTag)}`;
+            }
             
             console.log('🔗 Connecting to WebSocket:', wsUrl);
             

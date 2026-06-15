@@ -2,8 +2,9 @@
 FastAPI main application - Production-ready Face Recognition Attendance System
 All endpoints centralized and organized under /api/v1/
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import HTMLResponse, JSONResponse
+from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from datetime import datetime
@@ -109,7 +110,12 @@ manager = ConnectionManager()
 
 
 @app.websocket("/ws/camera/{session_id}")
-async def websocket_camera(websocket: WebSocket, session_id: str):
+async def websocket_camera(
+    websocket: WebSocket,
+    session_id: str,
+    class_tag: Optional[str] = Query(None),
+    class_name: Optional[str] = Query(None)
+):
     """WebSocket endpoint for live camera attendance"""
     await manager.connect(websocket, session_id)
     
@@ -124,8 +130,12 @@ async def websocket_camera(websocket: WebSocket, session_id: str):
         from app.core.config import EMBEDDINGS_DIR
         import os
         
+        target_class = class_tag or class_name
+        if not isinstance(target_class, str):
+            target_class = None
+        
         student_crud = StudentCRUD()
-        attendance_crud = AttendanceCRUD()
+        attendance_crud = AttendanceCRUD(target_class) if target_class else AttendanceCRUD()
         
         # Load embeddings
         EMBEDDINGS_FILE = os.path.join(EMBEDDINGS_DIR, "student_embeddings.npy")
@@ -135,6 +145,16 @@ async def websocket_camera(websocket: WebSocket, session_id: str):
         
         data_embeddings = np.load(EMBEDDINGS_FILE, allow_pickle=True).item()
         student_embeddings = dict(zip(data_embeddings["student_ids"], data_embeddings["embeddings"]))
+        
+        # Isolate candidate student embeddings if target_class is selected
+        if target_class:
+            class_students = student_crud.list_students(limit=10000, class_name=target_class)
+            class_student_ids = {s.get("student_id") for s in class_students if s.get("student_id")}
+            student_embeddings = {
+                s_id: s_emb
+                for s_id, s_emb in student_embeddings.items()
+                if s_id in class_student_ids
+            }
         
         marked_today = set()
         THRESHOLD = 0.6
@@ -168,7 +188,7 @@ async def websocket_camera(websocket: WebSocket, session_id: str):
                         
                         student_name = None
                         if best_student_id:
-                            student = student_crud.get_student_by_id(best_student_id)
+                            student = student_crud.get_student_by_id(best_student_id, class_name=target_class)
                             student_name = student["name"] if student else best_student_id
                         
                         if best_score >= THRESHOLD:
@@ -269,14 +289,29 @@ def api_root():
     }
 
 @app.get("/camera", response_class=HTMLResponse, tags=["UI"])
-def camera_interface():
+def camera_interface(class_tag: Optional[str] = Query(None), class_name: Optional[str] = Query(None)):
     """Live camera attendance interface"""
     try:
         import os
+        import json
         html_path = os.path.join("templates", "live_camera.html")
         if os.path.exists(html_path):
             with open(html_path, "r", encoding="utf-8") as f:
-                return f.read()
+                html_content = f.read()
+            
+            # Fetch dynamic class names from MongoDB collections starting with 'students-'
+            from app.core.database import db
+            collections = db.list_collection_names()
+            classes = [col.replace("students-", "") for col in collections if col.startswith("students-")]
+            classes = sorted(list(set(classes)))
+            
+            # Inject classes list into templates before rendering
+            classes_json = json.dumps(classes)
+            html_content = html_content.replace(
+                "window.AVAILABLE_CLASSES = [];",
+                f"window.AVAILABLE_CLASSES = {classes_json};"
+            )
+            return html_content
         return "<h1>Camera interface not found</h1>"
     except Exception as e:
         return f"<h1>Error loading camera interface</h1><p>{str(e)}</p>"
