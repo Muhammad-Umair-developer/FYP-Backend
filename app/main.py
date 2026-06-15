@@ -317,6 +317,86 @@ def delete_class(class_name: str, current_user: str = Depends(get_current_user))
         
     return {"message": f"Class '{class_name}' deleted successfully"}
 
+@app.get("/classes/{class_name}/export-attendance", tags=["Classes"])
+def export_attendance(class_name: str, current_user: str = Depends(get_current_user)):
+    """Export today's attendance for a class as an Excel spreadsheet"""
+    from app.core.database import db
+    from app.crud.student_crud import StudentCRUD
+    from app.crud.attendance_crud import resolve_attendance_collection
+    from fastapi import HTTPException
+    from fastapi.responses import StreamingResponse
+    import io
+    import pandas as pd
+    import re
+    
+    try:
+        # 1. Fetch all registered students
+        student_crud = StudentCRUD(f"students-{class_name}")
+        students = student_crud.list_students(limit=10000)
+        
+        # 2. Fetch today's attendance logs
+        now = datetime.utcnow()
+        start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        resolved_col = resolve_attendance_collection(class_name)
+        today_records = list(db[resolved_col].find({
+            "date": {"$gte": start_date, "$lte": end_date}
+        }))
+        
+        # 3. Cross-reference
+        data = []
+        for s in students:
+            s_id = s.get("student_id")
+            name = s.get("name")
+            reg_num = s.get("reg_number") or s_id
+            
+            # Find matching record in today_records
+            present_record = None
+            numeric_id = s_id.lstrip('0') if s_id.isdigit() else s_id
+            for record in today_records:
+                record_id = record.get("student_id", "")
+                if record_id == s_id:
+                    present_record = record
+                    break
+                numeric_part = re.sub(r'.*-(\d+)$', r'\1', record_id)
+                if numeric_part == numeric_id or numeric_part == s_id:
+                    present_record = record
+                    break
+            
+            status = "Present" if present_record is not None else "Absent"
+            
+            # Use record date if present, otherwise today's date
+            rec_date = present_record.get("date") if present_record else None
+            date_str = rec_date.strftime("%Y-%m-%d") if rec_date else now.strftime("%Y-%m-%d")
+            
+            data.append({
+                "Registration Number": reg_num,
+                "Name": name,
+                "Status": status,
+                "Date": date_str
+            })
+            
+        # Create pandas DataFrame
+        df = pd.DataFrame(data)
+        
+        # Write to BytesIO stream
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name="Attendance")
+        output.seek(0)
+        
+        headers = {
+            'Content-Disposition': f'attachment; filename="attendance_{class_name}_{now.strftime("%Y%m%d")}.xlsx"'
+        }
+        return StreamingResponse(
+            output,
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers=headers
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export attendance: {str(e)}")
+
 @app.get("/dashboard/stats", tags=["Dashboard"])
 def get_dashboard_stats(current_user: str = Depends(get_current_user)):
     """Fetch aggregated total students and unique classes count across MongoDB collections"""

@@ -112,7 +112,7 @@ async def mark_attendance_from_image(
 @router.get("/")
 def list_attendance(
     skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=1000),
     student_id: str = Query(None),
     date: str = Query(None),
     class_name: Optional[str] = Query(None)
