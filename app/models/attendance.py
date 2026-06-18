@@ -7,5 +7,5 @@ class AttendanceModel(BaseModel):
     name: Optional[str] = None
     date: Optional[datetime] = None
     status: str = "Present"
-    subject: Optional[str] = None
-    
+    course_name: Optional[str] = None
+    course_code: Optional[str] = None

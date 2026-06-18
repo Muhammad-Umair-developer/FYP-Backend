@@ -60,6 +60,7 @@ app.include_router(classes_router, prefix="/api/classes", tags=["Classes"])
 app.include_router(subjects_router, prefix="/api/subjects", tags=["Subjects"])
 
 
+
 # ==================== HEALTH CHECK ====================
 
 @app.get("/health", tags=["System"])
@@ -118,7 +119,8 @@ async def websocket_camera(
     session_id: str,
     class_tag: Optional[str] = Query(None),
     class_name: Optional[str] = Query(None),
-    subject: Optional[str] = Query(None)
+    course_name: Optional[str] = Query(None),
+    course_code: Optional[str] = Query(None)
 ):
     """WebSocket endpoint for live camera attendance"""
     await manager.connect(websocket, session_id)
@@ -198,14 +200,15 @@ async def websocket_camera(
                         if best_score >= THRESHOLD:
                             already_marked = best_student_id in marked_today
                             
-                            if not already_marked and not attendance_crud.check_attendance(best_student_id, datetime.utcnow(), subject=subject):
+                            if not already_marked and not attendance_crud.check_attendance(best_student_id, datetime.utcnow(), course_name=course_name, course_code=course_code):
                                 attendance_crud.mark_attendance({
                                     "student_id": best_student_id,
                                     "name": student_name,
                                     "date": datetime.utcnow(),
                                     "status": "Present",
                                     "confidence": float(best_score),
-                                    "subject": subject
+                                    "course_name": course_name,
+                                    "course_code": course_code
                                 })
                                 marked_today.add(best_student_id)
                                 newly_marked += 1

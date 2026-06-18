@@ -9,7 +9,7 @@ THRESHOLD = 0.6
 student_crud = StudentCRUD()
 
 
-def process_attendance(face_image, student_embeddings, class_name: str = None, subject: str = None):
+def process_attendance(face_image, student_embeddings, class_name: str = None, course_name: str = None, course_code: str = None):
     embedding = get_embedding(face_image)
     if embedding is None:
         return "No face embedding found"
@@ -34,7 +34,7 @@ def process_attendance(face_image, student_embeddings, class_name: str = None, s
     local_attendance_crud = AttendanceCRUD(class_name)
 
     # already marked?
-    if local_attendance_crud.check_attendance(best_student_id, today, subject=subject):
+    if local_attendance_crud.check_attendance(best_student_id, today, course_name=course_name, course_code=course_code):
         return f"{best_student_id} already marked"
 
     # fetch student details
@@ -46,13 +46,14 @@ def process_attendance(face_image, student_embeddings, class_name: str = None, s
         "name": student_name,
         "date": today,
         "status": "Present",
-        "subject": subject
+        "course_name": course_name,
+        "course_code": course_code
     })
 
     return f"Attendance marked for {student_name or best_student_id}"
 
 
-def process_multiple_faces(face_image, student_embeddings, class_name: str = None, subject: str = None):
+def process_multiple_faces(face_image, student_embeddings, class_name: str = None, course_name: str = None, course_code: str = None):
     """
     Process multiple faces in an image and match them against student embeddings
     """
@@ -104,7 +105,7 @@ def process_multiple_faces(face_image, student_embeddings, class_name: str = Non
             "status": "recognized"
         })
 
-        already_marked = local_attendance_crud.check_attendance(best_student_id, today, subject=subject) is not None
+        already_marked = local_attendance_crud.check_attendance(best_student_id, today, course_name=course_name, course_code=course_code) is not None
         face_result["already_marked"] = already_marked
 
         if already_marked:
@@ -116,7 +117,8 @@ def process_multiple_faces(face_image, student_embeddings, class_name: str = Non
                     "student_name": student_name,
                     "date": today,
                     "status": "Present",
-                    "subject": subject
+                    "course_name": course_name,
+                    "course_code": course_code
                 })
                 face_result["message"] = f"Attendance marked for {student_name or best_student_id}"
             except Exception as e:

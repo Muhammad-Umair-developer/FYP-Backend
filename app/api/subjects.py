@@ -16,7 +16,8 @@ class DegreeEnum(str, Enum):
 class SubjectCreateRequest(BaseModel):
     degree: DegreeEnum = Field(..., description="The degree name, strictly restricted to values like BSCS, BSSE, BSAI")
     semester: int = Field(..., ge=1, le=8, description="The semester number (1 to 8)")
-    subject_name: str = Field(..., min_length=1, description="The name of the subject being added")
+    course_name: str = Field(..., min_length=1, description="The name of the course being added")
+    course_code: str = Field(..., min_length=1, description="The code of the course being added")
 
 def parse_class_name(class_name: str):
     """
@@ -32,30 +33,21 @@ def parse_class_name(class_name: str):
 @router.post("/create")
 def create_subject(payload: SubjectCreateRequest, current_user: str = Depends(get_current_user)):
     """
-    Create a new subject following the hierarchical layout:
-    Degree -> Semester -> Respective Subjects.
+    Create a new course following the hierarchical layout:
+    Degree -> Semester -> Respective Courses.
     """
     degree = payload.degree.value
     semester = str(payload.semester)  # Convert to string to use as key in nested document
-    subject_name = payload.subject_name.strip()
+    course_name = payload.course_name.strip()
+    course_code = payload.course_code.strip()
     
-    if not subject_name:
-        raise HTTPException(status_code=400, detail="Subject name cannot be empty")
+    if not course_name or not course_code:
+        raise HTTPException(status_code=400, detail="Course name and code cannot be empty")
         
     try:
-        # Use $addToSet to add the subject_name to the list of subjects for this degree and semester.
-        # This automatically prevents duplicate subject names within the same semester,
-        # and dynamically structures the document hierarchically:
-        # {
-        #   "degree": "BSCS",
-        #   "semesters": {
-        #     "1": ["Programming Fundamentals", "Calculus"],
-        #     "2": ["Object Oriented Programming"]
-        #   }
-        # }
         db.subjects.update_one(
             {"degree": degree},
-            {"$addToSet": {f"semesters.{semester}": subject_name}},
+            {"$addToSet": {f"semesters.{semester}": {"course_name": course_name, "course_code": course_code}}},
             upsert=True
         )
         
@@ -63,10 +55,11 @@ def create_subject(payload: SubjectCreateRequest, current_user: str = Depends(ge
         updated_doc = db.subjects.find_one({"degree": degree}, {"_id": 0})
         
         return {
-            "message": f"Subject '{subject_name}' processed successfully for {degree} Semester {semester}",
+            "message": f"Course '{course_name}' ({course_code}) processed successfully for {degree} Semester {semester}",
             "degree": degree,
             "semester": payload.semester,
-            "subject_name": subject_name,
+            "course_name": course_name,
+            "course_code": course_code,
             "updated_structure": updated_doc
         }
     except Exception as e:
@@ -74,6 +67,8 @@ def create_subject(payload: SubjectCreateRequest, current_user: str = Depends(ge
             status_code=500,
             detail=f"Failed to save subject hierarchy: {str(e)}"
         )
+
+
 
 @router.get("")
 def list_subjects(
@@ -114,3 +109,129 @@ def list_subjects(
     # Return the array under semesters.<semester>
     semesters = doc.get("semesters", {})
     return semesters.get(str(semester), [])
+
+
+@router.patch("/update-name")
+def update_course_name(
+    degree: DegreeEnum = Query(..., description="The degree name (e.g., BSCS, BSSE, BSAI)"),
+    semester: int = Query(..., ge=1, le=8, description="The semester number (1 to 8)"),
+    old_course_name: str = Query(..., description="The current name of the course to be updated"),
+    new_course_name: str = Query(..., description="The new name for the course"),
+    current_user: str = Depends(get_current_user)
+):
+    """
+    Manually rename a course using simple input fields (query parameters).
+    """
+    degree_val = degree.value
+    semester_str = str(semester)
+    old_course_name = old_course_name.strip()
+    new_course_name = new_course_name.strip()
+    
+    if not old_course_name or not new_course_name:
+        raise HTTPException(status_code=400, detail="Course names cannot be empty")
+        
+    try:
+        doc = db.subjects.find_one({"degree": degree_val})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"No courses registered for degree {degree_val}")
+            
+        semesters = doc.get("semesters", {})
+        subjects_list = semesters.get(semester_str, [])
+        
+        found = False
+        updated_list = []
+        for x in subjects_list:
+            if isinstance(x, dict) and x.get("course_name") == old_course_name:
+                updated_list.append({"course_name": new_course_name, "course_code": x.get("course_code")})
+                found = True
+            elif isinstance(x, str) and x == old_course_name:
+                # Fallback for legacy string format
+                updated_list.append(new_course_name)
+                found = True
+            else:
+                updated_list.append(x)
+                
+        if not found:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Course '{old_course_name}' not found in Semester {semester} for {degree_val}"
+            )
+            
+        # Save back to MongoDB
+        db.subjects.update_one(
+            {"degree": degree_val},
+            {"$set": {f"semesters.{semester_str}": updated_list}}
+        )
+        
+        return {
+            "message": f"Course '{old_course_name}' successfully updated to '{new_course_name}'",
+            "degree": degree_val,
+            "semester": semester,
+            "old_course_name": old_course_name,
+            "new_course_name": new_course_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update course name: {str(e)}")
+
+
+@router.delete("")
+def delete_course(
+    degree: DegreeEnum = Query(..., description="The degree name (e.g., BSCS, BSSE, BSAI)"),
+    semester: int = Query(..., ge=1, le=8, description="The semester number (1 to 8)"),
+    course_name: str = Query(..., description="The name of the course to delete"),
+    current_user: str = Depends(get_current_user)
+):
+    """
+    Manually delete a specific course from a degree and semester's list in MongoDB.
+    """
+    degree_val = degree.value
+    semester_str = str(semester)
+    course_name = course_name.strip()
+    
+    if not course_name:
+        raise HTTPException(status_code=400, detail="Course name cannot be empty")
+        
+    try:
+        doc = db.subjects.find_one({"degree": degree_val})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"No courses registered for degree {degree_val}")
+            
+        semesters = doc.get("semesters", {})
+        subjects_list = semesters.get(semester_str, [])
+        
+        found = False
+        updated_list = []
+        for x in subjects_list:
+            if isinstance(x, dict) and x.get("course_name") == course_name:
+                found = True
+                continue
+            elif isinstance(x, str) and x == course_name:
+                found = True
+                continue
+            else:
+                updated_list.append(x)
+                
+        if not found:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Course '{course_name}' not found in Semester {semester} for {degree_val}"
+            )
+            
+        # Update MongoDB
+        db.subjects.update_one(
+            {"degree": degree_val},
+            {"$set": {f"semesters.{semester_str}": updated_list}}
+        )
+        
+        return {
+            "message": f"Course '{course_name}' successfully deleted from {degree_val} Semester {semester}",
+            "degree": degree_val,
+            "semester": semester,
+            "course_name": course_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete course: {str(e)}")

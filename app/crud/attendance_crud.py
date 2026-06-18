@@ -44,8 +44,8 @@ class AttendanceCRUD:
         else:
             self.collection.insert_one(attendance)
     
-    def check_attendance(self, student_id: str, attendance_date, subject: Optional[str] = None):
-        """Check if student already marked for the date (and optionally subject)"""
+    def check_attendance(self, student_id: str, attendance_date, course_name: Optional[str] = None, course_code: Optional[str] = None):
+        """Check if student already marked for the date (and optionally course)"""
         # Handle both date and datetime objects
         if isinstance(attendance_date, datetime):
             # Search by date only (ignore time)
@@ -58,14 +58,20 @@ class AttendanceCRUD:
         else:
             query = {"student_id": student_id, "date": attendance_date}
         
-        if subject:
-            query["subject"] = subject
+        if course_name:
+            query["course_name"] = course_name
+        if course_code:
+            query["course_code"] = course_code
         
         result = self.collection.find_one(query)
         
         # If not found with exact ID, try numeric ID match
         if not result:
-            find_query = {"subject": subject} if subject else {}
+            find_query = {}
+            if course_name:
+                find_query["course_name"] = course_name
+            if course_code:
+                find_query["course_code"] = course_code
             records = list(self.collection.find(find_query))
             numeric_id = student_id.lstrip('0') if student_id.isdigit() else student_id
             

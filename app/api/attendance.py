@@ -39,7 +39,7 @@ def mark_attendance(
         )
 
     local_crud = AttendanceCRUD(class_name)
-    if local_crud.check_attendance(attendance.student_id, today, subject=attendance.subject):
+    if local_crud.check_attendance(attendance.student_id, today, course_name=attendance.course_name, course_code=attendance.course_code):
         raise HTTPException(status_code=400, detail="Attendance already marked today")
 
     attendance.date = today
@@ -53,7 +53,8 @@ def mark_attendance(
 async def mark_attendance_from_image(
     class_name: str = Form(..., description="Target class name"),
     file: UploadFile = File(...),
-    subject: Optional[str] = Form(None, description="Subject name for attendance"),
+    course_name: Optional[str] = Form(None, description="Course name for attendance"),
+    course_code: Optional[str] = Form(None, description="Course code for attendance"),
     current_user: str = Depends(get_current_user)
 ):
     """Mark attendance by uploading student image"""
@@ -95,7 +96,7 @@ async def mark_attendance_from_image(
         student_embeddings = list(zip(sliced_student_ids, sliced_embeddings))
 
         # Process faces and mark attendance, dynamically restricting lookup
-        results = process_multiple_faces(img_rgb, student_embeddings, class_name=class_name, subject=subject)
+        results = process_multiple_faces(img_rgb, student_embeddings, class_name=class_name, course_name=course_name, course_code=course_code)
 
         return {
             "message": "Image processed successfully",
@@ -118,7 +119,8 @@ def list_attendance(
     student_id: str = Query(None),
     date: str = Query(None),
     class_name: Optional[str] = Query(None),
-    subject: Optional[str] = Query(None),
+    course_name: Optional[str] = Query(None),
+    course_code: Optional[str] = Query(None),
     current_user: str = Depends(get_current_user)
 ):
     """Get attendance records with optional filtering"""
@@ -129,8 +131,10 @@ def list_attendance(
             filter_dict["student_id"] = student_id
         if date:
             filter_dict["date"] = date
-        if subject:
-            filter_dict["subject"] = subject
+        if course_name:
+            filter_dict["course_name"] = course_name
+        if course_code:
+            filter_dict["course_code"] = course_code
 
         local_crud = AttendanceCRUD(class_name) if class_name else crud
         records = local_crud.list_attendance(skip, limit, filter_dict)
@@ -138,13 +142,14 @@ def list_attendance(
         # Map display title format
         for record in records:
             r_class = class_name or "Unknown Class"
-            r_subject = record.get("subject") or subject or "Unknown Subject"
-            record["display_title"] = f"Attendance for {r_class} - Subject: {r_subject}"
+            r_course = record.get("course_name") or course_name or "Unknown Course"
+            r_code = record.get("course_code") or course_code or "Unknown Code"
+            record["display_title"] = f"Attendance for {r_class} - Course: {r_course} ({r_code})"
 
         return {
             "records": records, 
             "count": len(records),
-            "summary": f"Attendance for {class_name} - Subject: {subject}" if class_name and subject else None
+            "summary": f"Attendance for {class_name} - Course: {course_name} ({course_code})" if class_name and course_name else None
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching records: {str(e)}")
@@ -176,7 +181,8 @@ def get_attendance(
 
 class AttendanceUpdateRequest(BaseModel):
     status: Optional[str] = Field(default=None)
-    subject: Optional[str] = Field(default=None)
+    course_name: Optional[str] = Field(default=None)
+    course_code: Optional[str] = Field(default=None)
     date: Optional[datetime] = Field(default=None)
 
 # ==================== UPDATE ====================
@@ -223,18 +229,22 @@ def update_attendance(
 def delete_attendance(
     student_id: str,
     class_name: str = Query(..., description="Target class name"),
-    subject: str = Query(..., description="Subject name"),
+    course_name: Optional[str] = Query(None, description="Course name"),
+    course_code: Optional[str] = Query(None, description="Course code"),
     current_user: str = Depends(get_current_user)
 ):
-    """Delete a specific attendance record manually by student ID, class, and subject"""
+    """Delete a specific attendance record manually by student ID, class, and course details"""
     try:
         local_crud = AttendanceCRUD(class_name)
         
-        # Delete the specific record matching student_id and subject
-        result = local_crud.collection.delete_one({
-            "student_id": student_id,
-            "subject": subject
-        })
+        # Build query matching student_id and course details
+        query = {"student_id": student_id}
+        if course_name:
+            query["course_name"] = course_name
+        if course_code:
+            query["course_code"] = course_code
+            
+        result = local_crud.collection.delete_one(query)
         
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Attendance record not found")
@@ -243,7 +253,8 @@ def delete_attendance(
             "message": "Attendance record deleted successfully",
             "student_id": student_id,
             "class_name": class_name,
-            "subject": subject
+            "course_name": course_name,
+            "course_code": course_code
         }
     except HTTPException:
         raise
