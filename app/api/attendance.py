@@ -219,21 +219,32 @@ def update_attendance(
 
 # ==================== DELETE ====================
 
-@router.delete("/{attendance_id}")
+@router.delete("/{student_id}")
 def delete_attendance(
-    attendance_id: str,
-    class_name: Optional[str] = Query(None),
+    student_id: str,
+    class_name: str = Query(..., description="Target class name"),
+    subject: str = Query(..., description="Subject name"),
     current_user: str = Depends(get_current_user)
 ):
-    """Delete an attendance record manually"""
+    """Delete a specific attendance record manually by student ID, class, and subject"""
     try:
-        local_crud = AttendanceCRUD(class_name) if class_name else crud
-        record = local_crud.get_attendance_by_id(attendance_id)
-        if not record:
+        local_crud = AttendanceCRUD(class_name)
+        
+        # Delete the specific record matching student_id and subject
+        result = local_crud.collection.delete_one({
+            "student_id": student_id,
+            "subject": subject
+        })
+        
+        if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Attendance record not found")
-
-        local_crud.delete_attendance(attendance_id)
-        return {"message": "Attendance record deleted successfully", "attendance_id": attendance_id}
+            
+        return {
+            "message": "Attendance record deleted successfully",
+            "student_id": student_id,
+            "class_name": class_name,
+            "subject": subject
+        }
     except HTTPException:
         raise
     except Exception as e:

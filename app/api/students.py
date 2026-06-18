@@ -442,3 +442,90 @@ async def enroll_student(
             except Exception:
                 pass
         raise e
+
+# ==================== IDENTIFY (FACE RECOGNITION) ====================
+
+@router.post("/identify")
+async def identify_student(
+    file: UploadFile = File(...),
+    current_user: str = Depends(get_current_user)
+):
+    """
+    Identify a student from an uploaded face image:
+    1. Extract face embedding from the uploaded image.
+    2. Compare the embedding against the global embeddings database.
+    3. Query MongoDB to retrieve the student's metadata and class name.
+    """
+    from app.services.face_matcher import cosine_similarity
+    from app.core.config import EMBEDDINGS_DIR
+    
+    try:
+        EMBEDDINGS_FILE = os.path.join(EMBEDDINGS_DIR, "student_embeddings.npy")
+        if not os.path.exists(EMBEDDINGS_FILE):
+            raise HTTPException(status_code=500, detail="Embeddings database file not found")
+
+        # Load global embeddings database
+        embeddings_data = np.load(EMBEDDINGS_FILE, allow_pickle=True).item()
+        student_ids = list(embeddings_data.get("student_ids", []))
+        embeddings = list(embeddings_data.get("embeddings", []))
+
+        if not student_ids:
+            raise HTTPException(status_code=400, detail="No registered student embeddings found")
+
+        # Read and decode image
+        contents = await file.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if img is None:
+            raise HTTPException(status_code=400, detail="Invalid image format")
+
+        # Convert BGR to RGB
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # Extract face embedding
+        emb = get_embedding(img_rgb)
+        if emb is None:
+            raise HTTPException(status_code=400, detail="No face detected in the image")
+
+        # Match against all registered student embeddings
+        best_score = 0
+        best_student_id = None
+        THRESHOLD = 0.6
+
+        for idx, registered_emb in enumerate(embeddings):
+            score = cosine_similarity(emb, registered_emb)
+            if score > best_score:
+                best_score = score
+                best_student_id = student_ids[idx]
+
+        if best_score < THRESHOLD or not best_student_id:
+            raise HTTPException(status_code=404, detail="No matching student found")
+
+        # Query MongoDB dynamically to fetch the student's record and class name
+        from app.core.database import db
+        student_doc = None
+        matched_class = None
+
+        for col_name in db.list_collection_names():
+            if col_name.startswith("students-"):
+                col = db[col_name]
+                student_doc = col.find_one({"student_id": best_student_id})
+                if student_doc:
+                    matched_class = col_name.replace("students-", "")
+                    break
+
+        if not student_doc:
+            raise HTTPException(status_code=404, detail="Student metadata not found in database")
+
+        return {
+            "name": student_doc.get("name"),
+            "registration_number": student_doc.get("reg_number") or best_student_id,
+            "class": matched_class,
+            "confidence": float(best_score)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to identify student: {str(e)}")
