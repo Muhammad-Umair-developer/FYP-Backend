@@ -1,8 +1,10 @@
 # For Node.js
 node_modules/
+.env
 
 # For Python
 .venv/
 venv/
 __pycache__/
 datasets/
+myvenv313/

@@ -16,7 +16,7 @@ insightface
 opencv-python
 numpy
 mtcnn
-onnxruntime
+onnxruntime==1.19.2
 
 # Authentication & Security
 python-jose[cryptography]
