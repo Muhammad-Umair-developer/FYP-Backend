@@ -73,7 +73,7 @@ def health_check():
 
 
 @app.get("/api/info", tags=["System"])
-def api_info():
+def api_info(current_user: str = Depends(get_current_user)):
     """Get API information"""
     return {
         "name": "Face Recognition Attendance System",

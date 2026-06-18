@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Form, File, UploadFile
+from pydantic import BaseModel, Field
 from app.models.student import StudentModel, StudentsListResponse
 from app.crud.student_crud import StudentCRUD
 from app.core.security import get_current_user
@@ -195,7 +196,8 @@ async def register_student(
 def list_students(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=200),
-    class_name: Optional[str] = Query(None)
+    class_name: Optional[str] = Query(None),
+    current_user: str = Depends(get_current_user)
 ):
     """Get all students with pagination"""
     class_crud = StudentCRUD(f"students-{class_name}") if class_name else crud
@@ -206,7 +208,8 @@ def list_students(
 @router.get("/search/by-name")
 def search_students_by_name(
     query: str = Query(..., min_length=1),
-    class_name: Optional[str] = Query(None)
+    class_name: Optional[str] = Query(None),
+    current_user: str = Depends(get_current_user)
 ):
     """Search students by name"""
     class_crud = StudentCRUD(f"students-{class_name}") if class_name else crud
@@ -219,7 +222,8 @@ def search_students_by_name(
 @router.get("/{student_id}")
 def get_student(
     student_id: str,
-    class_name: Optional[str] = Query(None)
+    class_name: Optional[str] = Query(None),
+    current_user: str = Depends(get_current_user)
 ):
     """Get a specific student by ID"""
     class_crud = StudentCRUD(f"students-{class_name}") if class_name else crud
@@ -229,26 +233,58 @@ def get_student(
     return student
 
 
+class StudentUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None)
+    registration_number: Optional[str] = Field(default=None)
+
 # ==================== UPDATE ====================
 
-@router.put("/{student_id}")
+@router.patch("/{student_id}")
 def update_student(
     student_id: str,
-    update_data: dict,
+    payload: StudentUpdateRequest,
     class_name: Optional[str] = Query(None),
     current_user: str = Depends(get_current_user)
 ):
-    """Update student information"""
+    """Manually update student profile fields in MongoDB"""
     class_crud = StudentCRUD(f"students-{class_name}") if class_name else crud
     student = class_crud.get_student_by_id(student_id)
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
+        
+    # Clean the incoming payload by explicitly filtering out "string" and None values
+    payload_dict = {k: v for k, v in payload.dict(exclude_unset=True).items() if v != "string" and v is not None}
     
-    updated = class_crud.update_student(student_id, update_data)
-    if not updated:
+    update_data = {}
+    if "name" in payload_dict:
+        update_data["name"] = payload_dict["name"]
+    if "registration_number" in payload_dict:
+        update_data["reg_number"] = payload_dict["registration_number"]
+        update_data["student_id"] = payload_dict["registration_number"]
+        
+    if not update_data:
+        return {"message": "No update fields provided", "student_id": student_id}
+        
+    # Resolve the correct collection where the student is located
+    target_collection = class_crud.collection
+    if not class_name and class_crud.collection.name == "students":
+        from app.core.database import db
+        for col_name in db.list_collection_names():
+            if col_name.startswith("students-"):
+                if db[col_name].find_one({"student_id": student_id}):
+                    target_collection = db[col_name]
+                    break
+                    
+    # Update MongoDB using {"$set": update_data} via update_one so unprovided fields remain completely untouched
+    result = target_collection.update_one(
+        {"student_id": student_id},
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
         raise HTTPException(status_code=400, detail="Failed to update student")
-    
-    return {"message": "Student updated successfully", "student_id": student_id}
+        
+    return {"message": "Student updated successfully", "student_id": student_id, "updated_fields": update_data}
 
 
 # ==================== DELETE ====================
@@ -259,14 +295,37 @@ def delete_student(
     class_name: Optional[str] = Query(None),
     current_user: str = Depends(get_current_user)
 ):
-    """Delete a student"""
+    """Manually delete a student and completely remove their metadata and files from the system"""
     class_crud = StudentCRUD(f"students-{class_name}") if class_name else crud
     student = class_crud.get_student_by_id(student_id)
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
+    # Clean up associated files/directories from disk
+    import shutil
+    image_paths = student.get("image_paths", [])
+    deleted_dirs = set()
+    for img_path in image_paths:
+        dir_path = os.path.dirname(img_path)
+        if dir_path and dir_path not in deleted_dirs:
+            if os.path.exists(dir_path):
+                try:
+                    shutil.rmtree(dir_path)
+                    deleted_dirs.add(dir_path)
+                except Exception:
+                    pass
+                    
+    # Clean up raw datasets directory if it exists
+    raw_folder = os.path.join("datasets", "raw", student_id)
+    if os.path.exists(raw_folder):
+        try:
+            shutil.rmtree(raw_folder)
+        except Exception:
+            pass
+            
+    # Delete metadata from MongoDB
     class_crud.delete_student(student_id)
-    return {"message": "Student deleted successfully", "student_id": student_id}
+    return {"message": "Student completely deleted from system", "student_id": student_id}
 
 
 # ==================== ENROLL (AUTOMATED ONBOARDING) ====================

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, File, UploadFile, Depends, Query, Form
+from pydantic import BaseModel, Field
 from app.models.attendance import AttendanceModel
 from app.crud.attendance_crud import AttendanceCRUD
 from app.crud.student_crud import StudentCRUD
@@ -6,7 +7,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 import os
-from typing import Optional
+from typing import Optional, List
 
 from app.core.security import get_current_user
 from app.services.face_matcher import cosine_similarity
@@ -117,7 +118,8 @@ def list_attendance(
     student_id: str = Query(None),
     date: str = Query(None),
     class_name: Optional[str] = Query(None),
-    subject: Optional[str] = Query(None)
+    subject: Optional[str] = Query(None),
+    current_user: str = Depends(get_current_user)
 ):
     """Get attendance records with optional filtering"""
     try:
@@ -172,27 +174,45 @@ def get_attendance(
         raise HTTPException(status_code=500, detail=f"Error fetching record: {str(e)}")
 
 
+class AttendanceUpdateRequest(BaseModel):
+    status: Optional[str] = Field(default=None)
+    subject: Optional[str] = Field(default=None)
+    date: Optional[datetime] = Field(default=None)
+
 # ==================== UPDATE ====================
 
-@router.put("/{attendance_id}")
+@router.patch("/{attendance_id}")
 def update_attendance(
     attendance_id: str,
-    update_data: dict,
+    payload: AttendanceUpdateRequest,
     class_name: Optional[str] = Query(None),
     current_user: str = Depends(get_current_user)
 ):
-    """Update attendance status or details"""
+    """Manually correct or update an existing attendance record (changing status, subject, etc.)"""
     try:
         local_crud = AttendanceCRUD(class_name) if class_name else crud
         record = local_crud.get_attendance_by_id(attendance_id)
         if not record:
             raise HTTPException(status_code=404, detail="Attendance record not found")
 
-        updated = local_crud.update_attendance(attendance_id, update_data)
-        if not updated:
+        # Clean the incoming payload in the attendance route handler by explicitly filtering out "string" values
+        update_data = {k: v for k, v in payload.dict(exclude_unset=True).items() if v != "string" and v is not None}
+
+        if not update_data:
+            return {"message": "No update fields provided", "attendance_id": attendance_id}
+
+        # Update MongoDB using {"$set": update_data} via update_one so unprovided fields remain completely untouched
+        result = local_crud.collection.update_one(
+            {"_id": record["_id"]},
+            {"$set": update_data}
+        )
+        
+        if result.matched_count == 0:
             raise HTTPException(status_code=400, detail="Failed to update attendance")
 
-        return {"message": "Attendance updated successfully", "attendance_id": attendance_id}
+        return {"message": "Attendance updated successfully", "attendance_id": attendance_id, "updated_fields": update_data}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating record: {str(e)}")
 
@@ -205,7 +225,7 @@ def delete_attendance(
     class_name: Optional[str] = Query(None),
     current_user: str = Depends(get_current_user)
 ):
-    """Delete an attendance record"""
+    """Delete an attendance record manually"""
     try:
         local_crud = AttendanceCRUD(class_name) if class_name else crud
         record = local_crud.get_attendance_by_id(attendance_id)
@@ -214,5 +234,7 @@ def delete_attendance(
 
         local_crud.delete_attendance(attendance_id)
         return {"message": "Attendance record deleted successfully", "attendance_id": attendance_id}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting record: {str(e)}")

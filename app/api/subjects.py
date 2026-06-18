@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 from enum import Enum
 from typing import Optional
 import re
 from app.core.database import db
+from app.core.security import get_current_user
 
 router = APIRouter()
 
@@ -29,7 +30,7 @@ def parse_class_name(class_name: str):
     return None, None
 
 @router.post("/create")
-def create_subject(payload: SubjectCreateRequest):
+def create_subject(payload: SubjectCreateRequest, current_user: str = Depends(get_current_user)):
     """
     Create a new subject following the hierarchical layout:
     Degree -> Semester -> Respective Subjects.
@@ -78,7 +79,8 @@ def create_subject(payload: SubjectCreateRequest):
 def list_subjects(
     degree: Optional[str] = Query(None, description="Degree name (e.g. BSCS)"),
     semester: Optional[int] = Query(None, ge=1, le=8, description="Semester number (1-8)"),
-    class_name: Optional[str] = Query(None, description="Class name (e.g. BSCS-8A, BSCS_8B) to auto-extract degree & semester")
+    class_name: Optional[str] = Query(None, description="Class name (e.g. BSCS-8A, BSCS_8B) to auto-extract degree & semester"),
+    current_user: str = Depends(get_current_user)
 ):
     """
     Fetch all subjects registered under a specific degree and semester.
