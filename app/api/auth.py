@@ -13,7 +13,12 @@ from app.core.security import SECRET_KEY, ALGORITHM, create_access_token
 router = APIRouter()
 
 # Setup password context with sha256_crypt to avoid passlib bcrypt issues on Windows
-pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
+# Default to 2000 rounds to avoid high latency on login
+pwd_context = CryptContext(
+    schemes=["sha256_crypt"],
+    deprecated="auto",
+    sha256_crypt__default_rounds=2000
+)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 # Fallback Admin Credentials
@@ -107,6 +112,17 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Automatically upgrade slow hashes (535,000 rounds) to faster hashes (2000 rounds)
+    if "rounds=535000" in user.get("password", ""):
+        try:
+            new_hash = get_password_hash(form_data.password)
+            users_collection.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"password": new_hash}}
+            )
+        except Exception:
+            pass
 
     access_token = create_access_token(data={
         "sub": user["email"],
@@ -269,6 +285,13 @@ def seed_super_admin():
             "password": hashed_password,
             "is_super_admin": True
         })
+    elif "rounds=535000" in admin.get("password", ""):
+        # Upgrade admin hash if it's using the old slow rounds configuration
+        hashed_password = get_password_hash(ADMIN_PASSWORD)
+        users_collection.update_one(
+            {"email": ADMIN_EMAIL},
+            {"$set": {"password": hashed_password}}
+        )
 
 
 # Run seeding on startup/import
