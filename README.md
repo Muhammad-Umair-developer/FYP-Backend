@@ -26,6 +26,10 @@ graph TD
 - **Model**: **MTCNN (Multi-task Cascaded Convolutional Networks)**
 - **Function**: Extracts bounding boxes (`[x, y, x2, y2]`) and landmarks for all faces present in the frame.
 - **Pipeline Implementation**: `app/services/face_detector.py` defines `detect_faces` which decodes and converts raw images, runs MTCNN cascaded networks, and crops positive face regions for downstream feature extraction.
+- **Pre-processing & Performance Optimizations**:
+  - **Frame Throttling**: Limits frame processing to a maximum frequency of ~6.6 FPS (minimum `0.15s` interval) to avoid high CPU usage.
+  - **Blur Detection**: Calculates Laplacian variance on grayscale frames; discards frames with a variance below `85.0` to filter out motion blur or out-of-focus images.
+  - **Low-Light Enhancement**: Automatically triggers when mean pixel intensity drops below `80.0`. It converts the frame to the LAB color space, applies **CLAHE (Contrast Limited Adaptive Histogram Equalization)** to the L-channel (clip limit: `3.0`, grid size: `8x8`), and converts it back to RGB for improved detector sensitivity.
 
 ### 1.2 Feature Extraction (Face Embeddings)
 - **Model Framework**: **InsightFace (`buffalo_l` model pack)**
@@ -91,7 +95,8 @@ sequenceDiagram
 ```
 
 ### 3.1 Security & Hashing Backend
-- **Hashing Context**: Configured in `app/api/auth.py` via Passlib's `CryptContext` using `sha256_crypt` scheme to avoid compilation issues with `bcrypt` on Windows.
+- **Hashing Context**: Configured in `app/api/auth.py` via Passlib's `CryptContext` using `sha256_crypt` scheme to avoid compilation issues with `bcrypt` on Windows. It defaults to `2000` rounds to reduce login latency under CPU execution.
+- **Legacy Hash Migration**: Automatically upgrades legacy, CPU-intensive hashes (e.g., configurations using `535,000` rounds) to the optimized `2000` rounds configuration on the first successful login or during the startup seeding flow.
 - **Seeding**: On startup, if no user matches `ADMIN_EMAIL` (default: `admin@fyp.com`), the backend automatically inserts a seeded record using the default credentials (`admin@fyp.com` / `admin123`).
 - **Authorization Header**: Submissions to protected API paths require the HTTP header:
   `Authorization: Bearer <access_token>`
